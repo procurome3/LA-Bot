@@ -86,8 +86,6 @@ PERF_LOG_INTERVAL_SECONDS = 20.0
 # -------------------------
 # Live Arena availability
 # -------------------------
-# Jeśli po wejściu do Live Areny nie ma aktywnego Find Opponent,
-# traktujemy Arenę jako zamkniętą/niedostępną i wstrzymujemy kolejne próby.
 ARENA_CLOSED_RECHECK_SECONDS = 900.0
 ARENA_READY_TIMEOUT_SECONDS = 4.0
 MATCHMAKING_CLICK_VERIFY_SECONDS = 2.0
@@ -105,9 +103,6 @@ COMBAT_NO_PROGRESS_DIAG_SECONDS = 8.0
 # -------------------------
 # Combat recognition V11
 # -------------------------
-# V11 nie przeszukuje już całego paska jednym template-matchem jako
-# podstawowej metody. Najpierw wykrywa fizyczne okrągłe przyciski,
-# normalizuje ich obrazy, a potem klasyfikuje je względem PNG z bilder.
 SKILL_SLOT_SCORE_MIN = 0.46
 SKILL_SLOT_SCORE_STRONG = 0.62
 SKILL_FAMILY_BIND_SCORE = 0.50
@@ -116,9 +111,6 @@ SKILL_FAMILY_MEMORY_MIN = 0.40
 # -------------------------
 # Scalable roster identity V15
 # -------------------------
-# The combat database can be large, but only the actually drafted team should
-# receive expensive A1 verification.  If draft hints are unavailable, a cheap
-# low-resolution prefilter bounds the number of exact A1 matches.
 COMBAT_A1_EXACT_SCAN_LIMIT = 8
 COMBAT_A1_PREFILTER_TOP_K = 5
 COMBAT_A1_PREFILTER_MAX_EXACT = 8
@@ -126,136 +118,23 @@ COMBAT_A1_PREFILTER_DOWNSCALE = 0.33
 COMBAT_A1_PREFILTER_RESCUE_SCORE = 0.78
 COMBAT_A1_PREFILTER_RESCUE_MARGIN = 0.16
 
-# Jeśli przez ten czas mamy pewne Your Turn / zielony ring, ale żaden
-# template nie przejdzie progu, klikamy LEWY pierwszy aktywny skill.
-# Dla obecnej puli championów jest to A1 wymagające celu.
 SKILL_SAFE_A1_FALLBACK_SECONDS = 0.75
 
 # Wykrywanie zielonego ringu aktywnego ally.
 ACTIVE_RING_GREEN_RATIO_MIN = 0.0030
 ACTIVE_RING_DOMINANCE = 1.80
 
-# Jawna kolejność skilli. Kolejność listy SKILL_PLAN nie jest już
-# bezpośrednio używana jako kolejność decyzji.
-SKILL_PRIORITY_BY_FAMILY = {
-    # Existing roster — behavior preserved.
-    "fabian": ["A3", "A2", "A1"],
-    "mikage": ["A3", "A2", "A1"],
-    "mithrala": ["A3", "A2", "A1"],
-    "ankora": ["A3", "A2", "A1"],
-    "udk": ["A3", "A2", "A1"],
-    "ronda": ["A2", "A3", "A1"],
-    "harima": ["A2", "A3", "A1"],
-    "fenax": ["A1"],
-
-    # User-defined new roster.
-    "predator": ["A2", "A3", "A1"],
-    "mavara": ["A3", "A2", "A1"],
-    "maria": ["A3", "A2", "A1"],
-    "pelops": ["A3", "A2", "A1"],
-    "galathir_f1": ["A3", "A2", "A1"],
-    "galathir_f2": ["A3", "A2", "A1"],
-    "theodosia_f1": ["A2", "A3", "A1"],
-    "theodosia_f2": ["A2", "A3", "A1"],
-    "komidus_f1": ["A4", "A1"],
-    "komidus_f2": ["A3", "A2", "A1"],
-    "arbiter": ["A3", "A4", "A2", "A1"],
-    "vestele": ["A3", "A2", "A1"],
-    "tekteon": ["A3", "A2", "A1"],
-    "siphi": ["A3", "A2", "A1"],
-    "krixia_f1": ["A3", "A4", "A1"],
-    "krixia_f2": ["A3", "A2", "A4", "A1"],
-    "harvest_jack": ["A2", "A3", "A1"],
-    "joan_f1": ["A3", "A2", "A1"],
-    "joan_f2": ["A3", "A2", "A1"],
-    "yumeko": ["A3", "A1"],
-    "cruetraxa": ["A2", "A1"],
-    "gliseah": ["A3", "A2", "A1"],
-    "nekhret": ["A2", "A3", "A1"],
-    "embrys_f1": ["A4", "A1"],
-    "embrys_f2": ["A2", "A3", "A1"],
-    "marius": ["A3", "A2", "A1"],
-}
-
-# Conditions are evaluated only for the currently recognised champion/skill.
-# "unknown" perception never silently falls through to a lower priority skill.
-SKILL_RULES_BY_FAMILY = {
-    "fabian": {
-        "A3": {"opening_skip_if_enemy_any": ("gliseah",)},
-    },
-    "maria": {
-        "A3": {"self_buff_count_in": (3, 6, 9)},
-        "A2": {"requires_extra_turn": True},
-    },
-    "theodosia_f1": {"A3": {"requires_dead_ally": True}},
-    "theodosia_f2": {"A3": {"requires_dead_ally": True}},
-    "arbiter": {"A4": {"requires_dead_ally": True}},
-    "siphi": {"A3": {"requires_dead_ally": True}},
-    "joan_f1": {"A3": {"requires_dead_ally": True}},
-}
-
-# Target policy is applied after the global safety filter
-# (Block Damage / Unkillable / Counterattack) and before final HP/slot fallback.
-TARGET_POLICY_BY_FAMILY_SKILL = {
-    ("fabian", "A2"): {
-        "avoid_effects": ("stoneskin", "total_guard", "block_debuffs"),
-        "strict_avoid": True,
-    },
-    ("vestele", "A2"): {
-        "avoid_effects": ("unkillable", "total_guard"),
-        "strict_avoid": True,
-        "unknown_is_unsafe_effects": ("unkillable",),
-    },
-    ("maria", "A1"): {
-        "prefer_effects": ("total_guard",),
-    },
-    ("yumeko", "A1"): {
-        "prefer_effects": ("total_guard",),
-    },
-    ("harvest_jack", "A1"): {
-        "buff_count": "max",
-    },
-    ("cruetraxa", "A2"): {
-        "buff_count": "min",
-        "avoid_effects": ("unkillable",),
-    },
-    ("cruetraxa", "A1"): {
-        "buff_count": "min",
-        "avoid_effects": ("unkillable",),
-    },
-}
-
-# Local status templates used by skill-specific target rules.
-SPECIAL_TARGET_EFFECT_TEMPLATES = {
-    "block_debuffs": "./bilder/block_debuffs.png",
-    "total_guard": "./bilder/total_guard.png",
-    "mercurial": "./bilder/total_guard.png",
-}
-SPECIAL_TARGET_EFFECT_SCORE_MIN = 0.78
-SPECIAL_TARGET_EFFECT_SCALES = (0.80, 0.90, 1.00, 1.10, 1.20)
-
-# Transform A4 jest globalny i wpada przed A1, ale po wyższych
-# aktywnych skillach A2/A3 zgodnie z priorytetem championa.
-GLOBAL_A4_BEFORE_A1 = True
-
-# Cooldown / disabled skill: porównujemy jasność i nasycenie realnej ikony
-# do aktywnego PNG z bilder. Chroni to przed wyborem skilla na cooldownie.
-SKILL_AVAILABLE_VALUE_RATIO_MIN = 0.62
-SKILL_AVAILABLE_SAT_RATIO_MIN = 0.50
-
-# Single-target: po wybraniu skilla daj RAID chwilę na wejście w target mode.
+# Single-target timing
 TARGETING_DELAY_MIN = 0.14
 TARGETING_DELAY_MAX = 0.22
 TARGET_RETRY_DELAY = 0.14
-
-# New decision runtime tuning
-# These values are intentionally conservative: the engine waits a short time,
-# then re-evaluates with a controlled fallback instead of waiting forever.
-DECISION_UNKNOWN_TIMEOUT = 1.0
-DECISION_ALLOW_FALLBACK = True
 TARGET_CONFIRM_RETRY_COUNT = 3
 TARGET_CONFIRM_WAIT_SECONDS = 0.12
 REVIVE_CONFIRM_FRAMES = 4
+
+# Decision runtime tuning
+DECISION_UNKNOWN_TIMEOUT = 1.0
+DECISION_ALLOW_FALLBACK = True
 
 # Leader selection verify V11.3.
 LEADER_SELECTED_BORDER_RATIO_MIN = 0.12
@@ -263,11 +142,7 @@ LEADER_SELECTED_BORDER_MARGIN = 0.05
 LEADER_TEMPLATE_CONFIDENCE = 0.70
 
 # Combat turn gate.
-# Ring służy wyłącznie do identyfikacji aktywnego ally.
-# Nie jest już dowodem własnej tury.
 COMBAT_REQUIRE_YOUR_TURN = True
-
-# V11.4: główne źródło informacji o turze w walce.
 COMBAT_PLAYER_PORTRAIT_REGION = (280, 0, 390, 105)
 COMBAT_OPPONENT_PORTRAIT_REGION = (635, 0, 755, 105)
 COMBAT_PORTRAIT_GREEN_RATIO_MIN = 0.025
@@ -282,9 +157,6 @@ ALLY_ACTIVE_RING_REGIONS = {
 }
 
 ENEMY_HP_ALIVE_THRESHOLD = 0.010
-
-# Revive jest celowo konserwatywny: slot musi najpierw zostać
-# potwierdzony jako żywy, a dopiero potem zniknięcie HP może oznaczać śmierć.
 ALLY_HP_ALIVE_THRESHOLD = 0.008
 ALLY_HP_DEAD_THRESHOLD = 0.002
 ALLY_ALIVE_CONFIRM_FRAMES = 3
@@ -293,20 +165,6 @@ ALLY_DEAD_CONFIRM_FRAMES = 4
 # -------------------------
 # Combat skill plan
 # -------------------------
-# tuple: template, skill_id, target_mode, attack_type
-#
-# skill_id ("A1", "A2", "A3", "A4"... ) jest nazwą logiczną.
-# Bot klika środek faktycznie znalezionego template'u skilla.
-#
-# attack_type:
-#   single    -> affinity-aware
-#   targeted  -> wymaga celu, affinity bez znaczenia
-#   aoe       -> bez pojedynczego target click
-#   self        -> support/buff; engine potwierdza na aktywnym modelu, gdy UI tego wymaga
-#   ally_dead   -> po skillu wybiera martwego sojusznika
-#   ally_living -> po skillu wybiera żywego sojusznika (np. lowest HP)
-#   transform   -> A4 mitycznych; A4 -> klik aktywnego modelu championa
-
 GLOBAL_SKILL_PLAN = [
     ("skill_mythical_transform_a4", "A4", "normal", "transform"),
 ]
@@ -336,7 +194,43 @@ SKILL_PLAN = [
     ("skill_fenax_a1", "A1", "normal", "single"),
 ]
 
-# Vision ROIs
+SKILL_PRIORITY_BY_FAMILY = {
+    "fabian": ["A3", "A2", "A1"],
+    "mikage": ["A3", "A2", "A1"],
+    "mithrala": ["A3", "A2", "A1"],
+    "ankora": ["A3", "A2", "A1"],
+    "udk": ["A3", "A2", "A1"],
+    "ronda": ["A2", "A3", "A1"],
+    "harima": ["A2", "A3", "A1"],
+    "fenax": ["A1"],
+}
+
+TARGET_POLICY_BY_FAMILY_SKILL = {
+    ("fabian", "A2"): {
+        "avoid_effects": ("stoneskin", "total_guard", "block_debuffs"),
+        "strict_avoid": True,
+    },
+    ("vestele", "A2"): {
+        "avoid_effects": ("unkillable", "total_guard"),
+        "strict_avoid": True,
+        "unknown_is_unsafe_effects": ("unkillable",),
+    },
+}
+
+SPECIAL_TARGET_EFFECT_TEMPLATES = {
+    "block_debuffs": "./bilder/block_debuffs.png",
+    "total_guard": "./bilder/total_guard.png",
+    "mercurial": "./bilder/total_guard.png",
+}
+SPECIAL_TARGET_EFFECT_SCORE_MIN = 0.78
+SPECIAL_TARGET_EFFECT_SCALES = (0.80, 0.90, 1.00, 1.10, 1.20)
+
+GLOBAL_A4_BEFORE_A1 = True
+
+# This is part of the safe runtime fallback to prevent deadlocks.
+SKILL_AVAILABLE_VALUE_RATIO_MIN = 0.62
+SKILL_AVAILABLE_SAT_RATIO_MIN = 0.50
+
 REFERENCE_SIZE = (1020, 793)
 TEMPLATE_REFERENCE_SIZE = (1024, 769)
 
@@ -369,60 +263,44 @@ ROI_FIND_OPPONENT = (300, 480, 1020, 793)
 
 
 def template_roi_for(template_path):
-    """Zwraca ROI dla template'u albo None, jeśli lepiej użyć całej klatki."""
     name = Path(template_path).name.lower()
-
     if name == "arena_live_your_turn.png":
         return ROI_TOP_CENTER
-
     if name in {
         "arena_live_pick_your_champions.png",
         "live_arena_ban_champions.png",
         "live_arena_pick_leader.png",
     }:
         return ROI_PHASE_CENTER
-
     if name == "arena_live_filter.png":
         return ROI_FILTER_LEFT
-
     if name == "arena_live_confirm_pick.png":
         return ROI_CONFIRM
-
     if name.startswith("arena_live_ban_"):
         return ROI_ENEMY_TEAM
-
     if name.startswith("arena_live_enemy_"):
         return ROI_ENEMY_TEAM
-
     if name.startswith("arena_live_lead_"):
         return ROI_OWN_TEAM
-
     if name.startswith("skill_"):
         return ROI_SKILL_BAR
-
     if name in {
         "arena_live_opponent_left.png",
         "arena_live_cant_find_opponent.png",
     }:
         return ROI_CENTER_STATUS
-
     if name == "arena_live_return.png":
         return ROI_RESULT_BOTTOM
-
     if name == "live_arena_refyll_modal.png":
         return ROI_REFILL_MODAL
-
     if name == "arena_live_find_opponent.png":
         return ROI_FIND_OPPONENT
-
     if name in {
         "arena_live_confirm_refyll.png",
         "arena_live_10gem_refyll.png",
     }:
         return ROI_REFILL_CONFIRM
-
     champion_names = {f"{x.lower()}.png" for x in MY_CHAMPIONS}
     if name in champion_names:
         return ROI_CHAMPION_ROSTER
-
     return None

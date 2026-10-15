@@ -51,16 +51,7 @@ class CombatDecisionTree:
         dead_ally_available: bool,
         min_score: float,
         prefer_fallback: bool = False,
-        **kwargs,
     ) -> SkillTreeResult:
-        """Decide which skill to use from a priority list.
-
-        The main difference from the older logic is that unknown/uncertain states
-        are accumulated instead of terminating the decision tree on the first
-        ambiguous signal. This allows lower-priority skills to still be evaluated
-        while leaving the outer engine enough information to start a controlled
-        timeout/fallback loop.
-        """
         priority = self.priority_for(family)
         declared = set(declared_skill_ids)
         unknown_reasons: list[str] = []
@@ -111,14 +102,13 @@ class CombatDecisionTree:
                 if skill_id not in declared:
                     continue
                 item = skills.get(skill_id)
-                if not item:
+                if item is None:
                     continue
                 if item.get("eligibility", "eligible") != "eligible":
                     continue
                 if item.get("availability", "unknown") == "unavailable":
                     continue
-                score = float(item.get("score", 0.0))
-                if score < float(min_score):
+                if float(item.get("score", 0.0)) < float(min_score):
                     continue
                 return SkillTreeResult(
                     item,
