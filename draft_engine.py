@@ -1,0 +1,410 @@
+"""Profile-driven Live Arena draft strategy.
+
+The screen/UI logic remains in arenalive.py.  This module only decides ordered
+candidate names for PICK, BAN and LEADER based on a JSON profile and the
+opponent champions already recognised on screen.
+
+Profile goals:
+- different users can keep different strategies without editing Python;
+- a bad/missing profile falls back to the legacy config order;
+- all decisions are deterministic and bounded-cost;
+- rule evaluation never clicks anything itself.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import json
+import os
+import re
+import difflib
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+
+
+_NAME_PREFIXES = (
+    "arena_live_enemy_",
+    "arena_live_opponent_",
+    "arena_live_ban_",
+    "arena_live_lead_",
+    "arena_live_",
+    "skill_",
+)
+
+# Canonical spelling aliases used in user-editable JSON profiles.
+# This keeps common manual spellings/typos from creating a new fake champion key.
+_CANONICAL_NAME_ALIASES = {
+    "glicea": "gliseah",
+    "galathier": "galathir",
+    "embris": "embrys",
+    "yummeko": "yumeko",
+    "siphie": "siphi",
+    "cruetaxa": "cruetraxa",
+    "shuzhen": "shu_zhen",
+    "telenna": "telena",
+    "talenna": "telena",
+    "thelena": "telena",
+}
+
+# Known filename spelling differences already present in the user's bilder.
+_BUILTIN_TEMPLATE_ALIASES = {
+    "gliseah": ("gliseah", "glicea"),
+    "galathir": ("galathir", "galathier"),
+    "embrys": ("embrys", "embris"),
+    "yumeko": ("yumeko", "yummeko"),
+    "siphi": ("siphi", "siphie"),
+    "cruetraxa": ("cruetraxa", "cruetaxa"),
+    "shu_zhen": ("shu_zhen", "shuzhen", "shu-zhen"),
+    "telena": ("telena", "telenna", "talenna", "thelena"),
+}
+
+
+def normalize_champion(value: object) -> str:
+    """Return a stable lower-case champion key without UI prefixes."""
+    text = str(value or "").strip().lower()
+    text = Path(text).stem
+    for prefix in _NAME_PREFIXES:
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    text = re.sub(r"_f[12]$", "", text)
+    text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+    return _CANONICAL_NAME_ALIASES.get(text, text)
+
+
+def pick_template_name(champion: object) -> str:
+    return f"arena_live_{normalize_champion(champion)}"
+
+
+def ban_template_name(champion: object) -> str:
+    return f"arena_live_ban_{normalize_champion(champion)}"
+
+
+def enemy_template_names(champion: object, explicit: Optional[str] = None) -> Tuple[str, ...]:
+    """Ordered possible opponent template stems for one champion."""
+    key = normalize_champion(champion)
+    variants: List[str] = []
+    if explicit:
+        stem = Path(str(explicit)).stem
+        variants.append(stem)
+    aliases = _BUILTIN_TEMPLATE_ALIASES.get(key, (key,))
+    for alias in aliases:
+        variants.append(f"arena_live_enemy_{alias}")
+        variants.append(f"arena_live_opponent_{alias}")
+        variants.append(f"arena_live_ban_{alias}")
+    # preserve order, remove duplicates
+    return tuple(dict.fromkeys(x for x in variants if x))
+
+
+def _unique(seq: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    seen: Set[str] = set()
+    for item in seq:
+        key = normalize_champion(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _normalise_rule(raw: Mapping[str, object]) -> dict:
+    return {
+        "if_enemy_any": _unique(raw.get("if_enemy_any", []) or []),
+        "if_enemy_all": _unique(raw.get("if_enemy_all", []) or []),
+        "priority": _unique(raw.get("priority", []) or []),
+    }
+
+
+def _rule_matches(rule: Mapping[str, object], enemy_set: Set[str]) -> bool:
+    any_list = list(rule.get("if_enemy_any", []) or [])
+    all_list = list(rule.get("if_enemy_all", []) or [])
+    if any_list and not any(name in enemy_set for name in any_list):
+        return False
+    if all_list and not all(name in enemy_set for name in all_list):
+        return False
+    return bool(any_list or all_list)
+
+
+@dataclass
+class DraftProfile:
+    name: str
+    pick_priority: List[str]
+    ban_priority: List[str]
+    leader_priority: List[str]
+    counter_pick: Dict[str, List[str]] = field(default_factory=dict)
+    counter_pick_rules: List[dict] = field(default_factory=list)
+    ban_rules: List[dict] = field(default_factory=list)
+    opponent_templates: Dict[str, str] = field(default_factory=dict)
+    pick_templates: Dict[str, str] = field(default_factory=dict)
+    ban_templates: Dict[str, str] = field(default_factory=dict)
+    source_path: Optional[str] = None
+
+    @classmethod
+    def from_mapping(
+        cls,
+        data: Mapping[str, object],
+        *,
+        name: str,
+        fallback_pick: Sequence[str] = (),
+        fallback_ban: Sequence[str] = (),
+        fallback_leader: Sequence[str] = (),
+        source_path: Optional[str] = None,
+    ) -> "DraftProfile":
+        pick = _unique(data.get("pick_priority", fallback_pick) or fallback_pick)
+        ban = _unique(data.get("ban_priority", fallback_ban) or fallback_ban)
+        leader = _unique(data.get("leader_priority", fallback_leader) or fallback_leader)
+
+        cp: Dict[str, List[str]] = {}
+        for enemy, order in (data.get("counter_pick", {}) or {}).items():
+            enemy_key = normalize_champion(enemy)
+            if enemy_key:
+                cp[enemy_key] = _unique(order or [])
+
+        cp_rules = [
+            _normalise_rule(rule)
+            for rule in (data.get("counter_pick_rules", []) or [])
+            if isinstance(rule, Mapping)
+        ]
+        ban_rules = [
+            _normalise_rule(rule)
+            for rule in (data.get("ban_rules", []) or [])
+            if isinstance(rule, Mapping)
+        ]
+
+        def norm_map(value: object) -> Dict[str, str]:
+            result: Dict[str, str] = {}
+            if not isinstance(value, Mapping):
+                return result
+            for key, path in value.items():
+                nk = normalize_champion(key)
+                if nk and path:
+                    result[nk] = str(path)
+            return result
+
+        return cls(
+            name=name,
+            pick_priority=pick,
+            ban_priority=ban,
+            leader_priority=leader,
+            counter_pick=cp,
+            counter_pick_rules=cp_rules,
+            ban_rules=ban_rules,
+            opponent_templates=norm_map(data.get("opponent_templates", {})),
+            pick_templates=norm_map(data.get("pick_templates", {})),
+            ban_templates=norm_map(data.get("ban_templates", {})),
+            source_path=source_path,
+        )
+
+    def counter_order(self, enemy_champions: Iterable[str]) -> List[str]:
+        """Return only counter-pick candidates activated by the current enemy team."""
+        enemy_set = {normalize_champion(x) for x in enemy_champions if normalize_champion(x)}
+        order: List[str] = []
+
+        # Simple: "if opponent picked Fabian -> Gliseah, Predator..."
+        for enemy_name, priority in self.counter_pick.items():
+            if enemy_name in enemy_set:
+                order.extend(priority)
+
+        # Advanced rules preserve JSON order and support any/all conditions.
+        for rule in self.counter_pick_rules:
+            if _rule_matches(rule, enemy_set):
+                order.extend(rule.get("priority", ()))
+
+        return _unique(order)
+
+    def pick_order(self, enemy_champions: Iterable[str], own_picks: Iterable[str]) -> List[str]:
+        own_set = {normalize_champion(x) for x in own_picks if normalize_champion(x)}
+        order: List[str] = []
+        order.extend(self.counter_order(enemy_champions))
+        order.extend(self.pick_priority)
+        return [x for x in _unique(order) if x not in own_set]
+
+    def ban_order(self, enemy_champions: Iterable[str]) -> List[str]:
+        enemy_set = {normalize_champion(x) for x in enemy_champions if normalize_champion(x)}
+        order: List[str] = []
+        for rule in self.ban_rules:
+            if _rule_matches(rule, enemy_set):
+                order.extend(rule.get("priority", ()))
+        order.extend(self.ban_priority)
+        return _unique(order)
+
+    def leader_order(self, own_picks: Iterable[str]) -> List[str]:
+        own_order = _unique(own_picks)
+        own_set = set(own_order)
+        configured = [x for x in self.leader_priority if not own_set or x in own_set]
+        return _unique(configured + own_order)
+
+    def opponent_names_needed(self) -> List[str]:
+        names: List[str] = list(self.counter_pick.keys())
+        for rule in self.counter_pick_rules + self.ban_rules:
+            names.extend(rule.get("if_enemy_any", ()))
+            names.extend(rule.get("if_enemy_all", ()))
+        names.extend(self.opponent_templates.keys())
+        return _unique(names)
+
+    def pick_template_stem(self, champion: object) -> str:
+        key = normalize_champion(champion)
+        explicit = self.pick_templates.get(key)
+        return Path(explicit).stem if explicit else pick_template_name(key)
+
+    def ban_template_stems(self, champion: object) -> Tuple[str, ...]:
+        key = normalize_champion(champion)
+        explicit = self.ban_templates.get(key)
+        candidates = []
+        if explicit:
+            candidates.append(Path(explicit).stem)
+        candidates.append(ban_template_name(key))
+        candidates.extend(enemy_template_names(key, self.opponent_templates.get(key)))
+        return tuple(dict.fromkeys(candidates))
+
+    def enemy_template_stems(self, champion: object) -> Tuple[str, ...]:
+        key = normalize_champion(champion)
+        return enemy_template_names(key, self.opponent_templates.get(key))
+
+    def preload_template_stems(self) -> List[str]:
+        names: List[str] = []
+        for champ in self.pick_priority:
+            names.append(self.pick_template_stem(champ))
+        for champ in self.ban_priority:
+            names.extend(self.ban_template_stems(champ))
+        for champ in self.opponent_names_needed():
+            names.extend(self.enemy_template_stems(champ))
+        return list(dict.fromkeys(names))
+
+
+def _legacy_to_keys(values: Sequence[str]) -> List[str]:
+    return _unique(values)
+
+
+def _resolve_profile_path(profile_name: str, profiles_dir: str):
+    """Resolve a profile robustly without silently changing draft strategy.
+
+    Resolution order:
+      1. exact filename stem,
+      2. case-insensitive exact stem,
+      3. one unique close match (common typo, e.g. symbiontS -> symbiont).
+
+    Returns:
+        (resolved_name, path, notice)
+    """
+    requested = str(profile_name or "default").strip()
+    safe_requested = re.sub(r"[^A-Za-z0-9_.-]+", "_", requested)
+    directory = Path(profiles_dir)
+
+    exact = directory / f"{safe_requested}.json"
+    if exact.exists():
+        return exact.stem, exact, None
+
+    available = [p for p in directory.glob("*.json") if p.is_file()]
+    by_lower = {p.stem.lower(): p for p in available}
+
+    lower = safe_requested.lower()
+    if lower in by_lower:
+        path = by_lower[lower]
+        notice = None
+        if path.stem != safe_requested:
+            notice = (
+                f"PROFILE NAME: '{safe_requested}' -> '{path.stem}' "
+                f"(case-insensitive match)"
+            )
+        return path.stem, path, notice
+
+    names = sorted(by_lower.keys())
+    close = difflib.get_close_matches(
+        lower,
+        names,
+        n=2,
+        cutoff=0.80,
+    )
+
+    # Autocorrect only when there is one clearly best candidate.
+    if close:
+        best = close[0]
+        second = close[1] if len(close) > 1 else None
+        best_ratio = difflib.SequenceMatcher(None, lower, best).ratio()
+        second_ratio = (
+            difflib.SequenceMatcher(None, lower, second).ratio()
+            if second is not None
+            else 0.0
+        )
+
+        if best_ratio >= 0.80 and (second is None or best_ratio - second_ratio >= 0.08):
+            path = by_lower[best]
+            notice = (
+                f"PROFILE AUTOCORRECT: '{safe_requested}' -> '{path.stem}' "
+                f"(similarity={best_ratio:.2f})"
+            )
+            return path.stem, path, notice
+
+    # No safe correction. Keep the requested name/path for the existing
+    # diagnostic/fallback path; arenalive.py will refuse to start the draft
+    # when an explicitly requested profile is invalid.
+    return safe_requested or "default", exact, None
+
+
+def load_profile(
+    profile_name: str,
+    *,
+    profiles_dir: str,
+    fallback_pick: Sequence[str],
+    fallback_ban: Sequence[str],
+    fallback_leader: Sequence[str],
+) -> DraftProfile:
+    """Load one JSON profile with safe typo correction.
+
+    If no profile can be resolved, the object still carries load_error so the
+    caller can fail closed instead of silently drafting with the wrong strategy.
+    """
+    requested = (profile_name or "default").strip()
+    safe_name, path, resolve_notice = _resolve_profile_path(
+        requested,
+        profiles_dir,
+    )
+
+    fallback_kwargs = dict(
+        name=safe_name or "default",
+        fallback_pick=_legacy_to_keys(fallback_pick),
+        fallback_ban=_legacy_to_keys(fallback_ban),
+        fallback_leader=_legacy_to_keys(fallback_leader),
+    )
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, Mapping):
+            raise ValueError("profile root must be an object")
+        profile = DraftProfile.from_mapping(
+            data,
+            source_path=str(path),
+            **fallback_kwargs,
+        )
+        if resolve_notice:
+            profile.load_notice = resolve_notice
+        profile.requested_name = requested
+        profile.profile_valid = True
+        return profile
+    except Exception as exc:
+        profile = DraftProfile.from_mapping({}, source_path=None, **fallback_kwargs)
+        profile.name = safe_name or "default"
+        # Diagnostic attributes without changing the dataclass public schema.
+        profile.load_error = f"{type(exc).__name__}: {exc}"
+        profile.requested_name = requested
+        profile.profile_valid = False
+        return profile
+
+
+def profile_name_from_argv(
+    argv: Sequence[str],
+    *,
+    default_name: str = "default",
+    env_name: str = "LIVEARENA_DRAFT_PROFILE",
+) -> str:
+    """CLI --draft-profile wins over env, then config default."""
+    args = list(argv or ())
+    if "--draft-profile" in args:
+        idx = args.index("--draft-profile")
+        if idx + 1 < len(args) and not str(args[idx + 1]).startswith("--"):
+            return str(args[idx + 1])
+    env_value = os.environ.get(env_name)
+    if env_value:
+        return env_value
+    return default_name
