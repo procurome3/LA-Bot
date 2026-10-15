@@ -40,9 +40,9 @@ _CANONICAL_NAME_ALIASES = {
     "siphie": "siphi",
     "cruetaxa": "cruetraxa",
     "shuzhen": "shu_zhen",
-    "telenna": "telena",
-    "talenna": "telena",
-    "thelena": "telena",
+    "telenna": "talenna",
+    "talenna": "talenna",
+    "thelena": "talenna",
 }
 
 # Known filename spelling differences already present in the user's bilder.
@@ -54,7 +54,7 @@ _BUILTIN_TEMPLATE_ALIASES = {
     "siphi": ("siphi", "siphie"),
     "cruetraxa": ("cruetraxa", "cruetaxa"),
     "shu_zhen": ("shu_zhen", "shuzhen", "shu-zhen"),
-    "telena": ("telena", "telenna", "talenna", "thelena"),
+    "talenna": ("telena", "telenna", "talenna", "thelena"),
 }
 
 # ---- Unified alias -> canonical map ---------------------------------------
