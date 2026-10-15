@@ -57,18 +57,50 @@ _BUILTIN_TEMPLATE_ALIASES = {
     "telena": ("telena", "telenna", "talenna", "thelena"),
 }
 
+# ---- Unified alias -> canonical map ---------------------------------------
+# Build a single mapping so all code paths produce the same canonical keys.
+_ALIAS_TO_CANONICAL: Dict[str, str] = {}
+
+# Populate from explicit canonical corrections (user typos -> canonical).
+for alias, canonical in _CANONICAL_NAME_ALIASES.items():
+    a = str(alias).strip().lower()
+    c = str(canonical).strip().lower()
+    _ALIAS_TO_CANONICAL[a] = c
+    _ALIAS_TO_CANONICAL[c] = c
+
+# Incorporate builtin template variants: map every variant to the canonical key.
+for canonical, variants in _BUILTIN_TEMPLATE_ALIASES.items():
+    c = str(canonical).strip().lower()
+    _ALIAS_TO_CANONICAL[c] = c
+    for v in variants:
+        _ALIAS_TO_CANONICAL[str(v).strip().lower()] = c
+# ---------------------------------------------------------------------------
+
 
 def normalize_champion(value: object) -> str:
-    """Return a stable lower-case champion key without UI prefixes."""
+    """Return a stable lower-case canonical champion key without UI prefixes.
+
+    This uses a unified alias map (_ALIAS_TO_CANONICAL) to ensure the same
+    canonical name is produced for template variants and common typos.
+    """
     text = str(value or "").strip().lower()
     text = Path(text).stem
+
+    # strip known UI prefixes
     for prefix in _NAME_PREFIXES:
         if text.startswith(prefix):
             text = text[len(prefix):]
             break
+
+    # remove form suffixes and non-alnum -> underscore
     text = re.sub(r"_f[12]$", "", text)
     text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-    return _CANONICAL_NAME_ALIASES.get(text, text)
+
+    if not text:
+        return ""
+
+    # map known aliases -> canonical
+    return _ALIAS_TO_CANONICAL.get(text, text)
 
 
 def pick_template_name(champion: object) -> str:
@@ -91,7 +123,6 @@ def enemy_template_names(champion: object, explicit: Optional[str] = None) -> Tu
         variants.append(f"arena_live_enemy_{alias}")
         variants.append(f"arena_live_opponent_{alias}")
         variants.append(f"arena_live_ban_{alias}")
-    # preserve order, remove duplicates
     return tuple(dict.fromkeys(x for x in variants if x))
 
 
@@ -200,12 +231,10 @@ class DraftProfile:
         enemy_set = {normalize_champion(x) for x in enemy_champions if normalize_champion(x)}
         order: List[str] = []
 
-        # Simple: "if opponent picked Fabian -> Gliseah, Predator..."
         for enemy_name, priority in self.counter_pick.items():
             if enemy_name in enemy_set:
                 order.extend(priority)
 
-        # Advanced rules preserve JSON order and support any/all conditions.
         for rule in self.counter_pick_rules:
             if _rule_matches(rule, enemy_set):
                 order.extend(rule.get("priority", ()))
@@ -213,10 +242,25 @@ class DraftProfile:
         return _unique(order)
 
     def pick_order(self, enemy_champions: Iterable[str], own_picks: Iterable[str]) -> List[str]:
-        own_set = {normalize_champion(x) for x in own_picks if normalize_champion(x)}
+        """
+        Return the ordered pick candidates, taking into account:
+          - counter picks (highest precedence),
+          - user's pick_priority,
+          - special rule: if selecting the 5th slot (own_picks has 4 items)
+            and Tekteon was NOT picked before, prefer Tekteon for this pick.
+        """
+        own_list = _unique(own_picks)
+        own_set = set(own_list)
+
         order: List[str] = []
         order.extend(self.counter_order(enemy_champions))
         order.extend(self.pick_priority)
+
+        tekteon_key = normalize_champion("tekteon")
+        if len(own_list) == 4 and tekteon_key and tekteon_key not in own_set:
+            order = [o for o in order if normalize_champion(o) != tekteon_key]
+            order.insert(0, tekteon_key)
+
         return [x for x in _unique(order) if x not in own_set]
 
     def ban_order(self, enemy_champions: Iterable[str]) -> List[str]:
@@ -317,7 +361,6 @@ def _resolve_profile_path(profile_name: str, profiles_dir: str):
         cutoff=0.80,
     )
 
-    # Autocorrect only when there is one clearly best candidate.
     if close:
         best = close[0]
         second = close[1] if len(close) > 1 else None
@@ -336,9 +379,6 @@ def _resolve_profile_path(profile_name: str, profiles_dir: str):
             )
             return path.stem, path, notice
 
-    # No safe correction. Keep the requested name/path for the existing
-    # diagnostic/fallback path; arenalive.py will refuse to start the draft
-    # when an explicitly requested profile is invalid.
     return safe_requested or "default", exact, None
 
 
@@ -385,7 +425,6 @@ def load_profile(
     except Exception as exc:
         profile = DraftProfile.from_mapping({}, source_path=None, **fallback_kwargs)
         profile.name = safe_name or "default"
-        # Diagnostic attributes without changing the dataclass public schema.
         profile.load_error = f"{type(exc).__name__}: {exc}"
         profile.requested_name = requested
         profile.profile_valid = False
