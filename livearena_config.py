@@ -153,12 +153,12 @@ SKILL_PRIORITY_BY_FAMILY = {
     "mavara": ["A3", "A2", "A1"],
     "maria": ["A3", "A2", "A1"],
     "pelops": ["A3", "A2", "A1"],
-    "galathir_f1": ["A3", "A2", "A1"],       # never transform
-    "galathir_f2": ["A3", "A2", "A1"],       # safety if already transformed
-    "theodosia_f1": ["A2", "A3", "A1"],      # never transform
-    "theodosia_f2": ["A2", "A3", "A1"],      # safety if already transformed
-    "komidus_f1": ["A4", "A1"],               # transform immediately
-    "komidus_f2": ["A3", "A2", "A1"],         # never return to form 1
+    "galathir_f1": ["A3", "A2", "A1"],
+    "galathir_f2": ["A3", "A2", "A1"],
+    "theodosia_f1": ["A2", "A3", "A1"],
+    "theodosia_f2": ["A2", "A3", "A1"],
+    "komidus_f1": ["A4", "A1"],
+    "komidus_f2": ["A3", "A2", "A1"],
     "arbiter": ["A3", "A4", "A2", "A1"],
     "vestele": ["A3", "A2", "A1"],
     "tekteon": ["A3", "A2", "A1"],
@@ -166,22 +166,20 @@ SKILL_PRIORITY_BY_FAMILY = {
     "krixia_f1": ["A3", "A4", "A1"],
     "krixia_f2": ["A3", "A2", "A4", "A1"],
     "harvest_jack": ["A2", "A3", "A1"],
-    "joan_f1": ["A3", "A2", "A1"],           # never transform
-    "joan_f2": ["A3", "A2", "A1"],           # safety if already transformed
-    "yumeko": ["A3", "A1"],                   # A2 disabled
+    "joan_f1": ["A3", "A2", "A1"],
+    "joan_f2": ["A3", "A2", "A1"],
+    "yumeko": ["A3", "A1"],
     "cruetraxa": ["A2", "A1"],
     "gliseah": ["A3", "A2", "A1"],
     "nekhret": ["A2", "A3", "A1"],
-    "embrys_f1": ["A4", "A1"],                # transform immediately
-    "embrys_f2": ["A2", "A3", "A1"],          # A1 fallback; no return transform
+    "embrys_f1": ["A4", "A1"],
+    "embrys_f2": ["A2", "A3", "A1"],
     "marius": ["A3", "A2", "A1"],
 }
 
 # Conditions are evaluated only for the currently recognised champion/skill.
 # "unknown" perception never silently falls through to a lower priority skill.
 SKILL_RULES_BY_FAMILY = {
-    # Fabian: old opener only when Gliseah is in the FINAL enemy team.
-    # If Gliseah was banned/absent, A3 remains the normal first priority.
     "fabian": {
         "A3": {"opening_skip_if_enemy_any": ("gliseah",)},
     },
@@ -201,16 +199,11 @@ SKILL_RULES_BY_FAMILY = {
 TARGET_POLICY_BY_FAMILY_SKILL = {
     ("fabian", "A2"): {
         "avoid_effects": ("stoneskin", "total_guard", "block_debuffs"),
-        # If every living target has at least one of these protections, A2 is
-        # marked ineligible and the strict tree falls through to A1.
         "strict_avoid": True,
     },
     ("vestele", "A2"): {
         "avoid_effects": ("unkillable", "total_guard"),
         "strict_avoid": True,
-        # Vestele A2 must NEVER be spent when Unkillable is present or its
-        # state is ambiguous.  In that case the strict skill tree falls
-        # through to A1 instead of risking A2 into Unkillable.
         "unknown_is_unsafe_effects": ("unkillable",),
     },
     ("maria", "A1"): {
@@ -233,12 +226,10 @@ TARGET_POLICY_BY_FAMILY_SKILL = {
 }
 
 # Local status templates used by skill-specific target rules.
-# User rule: "Mercurial" means the Total Guard buff granted by that set, so
-# Mercurial and Total Guard deliberately share the SAME visual template.
 SPECIAL_TARGET_EFFECT_TEMPLATES = {
     "block_debuffs": "./bilder/block_debuffs.png",
     "total_guard": "./bilder/total_guard.png",
-    "mercurial": "./bilder/total_guard.png",  # visual synonym / backward compatibility
+    "mercurial": "./bilder/total_guard.png",
 }
 SPECIAL_TARGET_EFFECT_SCORE_MIN = 0.78
 SPECIAL_TARGET_EFFECT_SCALES = (0.80, 0.90, 1.00, 1.10, 1.20)
@@ -257,6 +248,15 @@ TARGETING_DELAY_MIN = 0.14
 TARGETING_DELAY_MAX = 0.22
 TARGET_RETRY_DELAY = 0.14
 
+# New decision runtime tuning
+# These values are intentionally conservative: the engine waits a short time,
+# then re-evaluates with a controlled fallback instead of waiting forever.
+DECISION_UNKNOWN_TIMEOUT = 1.0
+DECISION_ALLOW_FALLBACK = True
+TARGET_CONFIRM_RETRY_COUNT = 3
+TARGET_CONFIRM_WAIT_SECONDS = 0.12
+REVIVE_CONFIRM_FRAMES = 4
+
 # Leader selection verify V11.3.
 LEADER_SELECTED_BORDER_RATIO_MIN = 0.12
 LEADER_SELECTED_BORDER_MARGIN = 0.05
@@ -268,16 +268,12 @@ LEADER_TEMPLATE_CONFIDENCE = 0.70
 COMBAT_REQUIRE_YOUR_TURN = True
 
 # V11.4: główne źródło informacji o turze w walce.
-# Zielona ramka portretu gracza = nasza tura.
-# Zielona ramka portretu przeciwnika = jego tura.
 COMBAT_PLAYER_PORTRAIT_REGION = (280, 0, 390, 105)
 COMBAT_OPPONENT_PORTRAIT_REGION = (635, 0, 755, 105)
 COMBAT_PORTRAIT_GREEN_RATIO_MIN = 0.025
 COMBAT_PORTRAIT_GREEN_DOMINANCE = 2.0
 BATTLE_READY_CONFIRM_FRAMES = 2
 
-# Obszary stóp / zielonego ringu 4 friendly slotów.
-# Referencja 1020x793.
 ALLY_ACTIVE_RING_REGIONS = {
     1: (50, 420, 225, 650),
     2: (215, 445, 405, 700),
@@ -311,192 +307,37 @@ ALLY_DEAD_CONFIRM_FRAMES = 4
 #   ally_living -> po skillu wybiera żywego sojusznika (np. lowest HP)
 #   transform   -> A4 mitycznych; A4 -> klik aktywnego modelu championa
 
-# Globalne skille niezależne od konkretnej postaci.
 GLOBAL_SKILL_PLAN = [
     ("skill_mythical_transform_a4", "A4", "normal", "transform"),
 ]
 
-# Skille konkretnych championów.
 SKILL_PLAN = [
-    # ---------------- Existing champions ----------------
-    # Fabian
     ("skill_fabian_a3", "A3", "normal", "aoe"),
     ("skill_fabian_a2", "A2", "normal", "single"),
     ("skill_fabian_a1", "A1", "normal", "single"),
-
-    # Mikage
     ("skill_mikage_a3", "A3", "normal", "single"),
     ("skill_mikage_a2", "A2", "normal", "aoe"),
     ("skill_mikage_a1", "A1", "normal", "single"),
-
-    # Mithrala
     ("skill_mithrala_a3", "A3", "normal", "self"),
     ("skill_mithrala_a2", "A2", "normal", "aoe"),
     ("skill_mithrala_a1", "A1", "normal", "targeted"),
-
-    # Ankora
     ("skill_ankora_a3", "A3", "dead_ally", "ally_dead"),
     ("skill_ankora_a2", "A2", "normal", "self"),
     ("skill_ankora_a1", "A1", "normal", "single"),
-
-    # UDK
     ("skill_udk_a3", "A3", "normal", "self"),
     ("skill_udk_a2", "A2", "normal", "aoe"),
     ("skill_udk_a1", "A1", "normal", "single"),
-
-    # Ronda
     ("skill_ronda_a2", "A2", "normal", "single"),
     ("skill_ronda_a3", "A3", "normal", "aoe"),
     ("skill_ronda_a1", "A1", "normal", "single"),
-
-    # Harima
     ("skill_harima_a2", "A2", "lowest_hp", "single"),
     ("skill_harima_a3", "A3", "normal", "aoe"),
     ("skill_harima_a1", "A1", "normal", "single"),
-
-    # Fenax
     ("skill_fenax_a1", "A1", "normal", "single"),
-
-    # ---------------- New database ----------------
-    # Predator
-    ("skill_predator_a2", "A2", "normal", "aoe"),
-    ("skill_predator_a3", "A3", "normal", "single"),
-    ("skill_predator_a1", "A1", "normal", "single"),
-
-    # Mavara
-    ("skill_mavara_a3", "A3", "dead_ally", "ally_dead"),
-    ("skill_mavara_a2", "A2", "normal", "self"),
-    ("skill_mavara_a1", "A1", "normal", "single"),
-
-    # Sanguine Maria
-    ("skill_maria_a3", "A3", "normal", "single"),
-    ("skill_maria_a2", "A2", "normal", "single"),
-    ("skill_maria_a1", "A1", "normal", "single"),
-
-    # Pelops
-    ("skill_pelops_a3", "A3", "normal", "self"),
-    ("skill_pelops_a2", "A2", "normal", "single"),
-    ("skill_pelops_a1", "A1", "normal", "single"),
-
-    # Starsage Galathir - both forms known, transform disabled by priority.
-    ("skill_galathir_f1_a3", "A3", "normal", "self"),
-    ("skill_galathir_f1_a2", "A2", "normal", "self"),
-    ("skill_galathir_f1_a1", "A1", "normal", "aoe"),
-    ("skill_galathir_f1_a4", "A4", "normal", "transform"),
-    ("skill_galathir_f2_a3", "A3", "normal", "self"),
-    ("skill_galathir_f2_a2", "A2", "normal", "aoe"),
-    ("skill_galathir_f2_a1", "A1", "normal", "aoe"),
-    ("skill_galathir_f2_a4", "A4", "normal", "transform"),
-
-    # Theodosia - A4 exists for recognition but is excluded from priorities.
-    ("skill_theodosia_f1_a2", "A2", "normal", "self"),
-    ("skill_theodosia_f1_a3", "A3", "normal", "self"),
-    ("skill_theodosia_f1_a1", "A1", "normal", "single"),
-    ("skill_theodosia_f1_a4", "A4", "normal", "transform"),
-    ("skill_theodosia_f2_a2", "A2", "normal", "aoe"),
-    ("skill_theodosia_f2_a3", "A3", "normal", "aoe"),
-    ("skill_theodosia_f2_a1", "A1", "normal", "single"),
-    ("skill_theodosia_f2_a4", "A4", "normal", "transform"),
-
-    # Komidus
-    ("skill_komidus_f1_a4", "A4", "normal", "transform"),
-    ("skill_komidus_f1_a3", "A3", "normal", "single"),
-    ("skill_komidus_f1_a2", "A2", "normal", "aoe"),
-    ("skill_komidus_f1_a1", "A1", "normal", "single"),
-    ("skill_komidus_f2_a4", "A4", "normal", "transform"),
-    ("skill_komidus_f2_a3", "A3", "normal", "single"),
-    ("skill_komidus_f2_a2", "A2", "normal", "aoe"),
-    ("skill_komidus_f2_a1", "A1", "normal", "single"),
-
-    # Arbiter
-    ("skill_arbiter_a3", "A3", "normal", "self"),
-    ("skill_arbiter_a4", "A4", "normal", "self"),
-    ("skill_arbiter_a2", "A2", "normal", "aoe"),
-    ("skill_arbiter_a1", "A1", "normal", "single"),
-
-    # Vestele
-    ("skill_vestele_a3", "A3", "normal", "aoe"),
-    ("skill_vestele_a2", "A2", "normal", "single"),
-    ("skill_vestele_a1", "A1", "normal", "single"),
-
-    # Tekteon
-    ("skill_tekteon_a3", "A3", "normal", "self"),
-    ("skill_tekteon_a2", "A2", "normal", "aoe"),
-    ("skill_tekteon_a1", "A1", "normal", "aoe"),
-
-    # Siphi
-    ("skill_siphi_a3", "A3", "dead_ally", "ally_dead"),
-    ("skill_siphi_a2", "A2", "normal", "self"),
-    ("skill_siphi_a1", "A1", "normal", "single"),
-
-    # Night Queen Krixia
-    ("skill_krixia_f1_a4", "A4", "normal", "transform"),
-    ("skill_krixia_f1_a3", "A3", "normal", "aoe"),
-    ("skill_krixia_f1_a2", "A2", "normal", "aoe"),
-    ("skill_krixia_f1_a1", "A1", "normal", "single"),
-    ("skill_krixia_f2_a4", "A4", "normal", "transform"),
-    ("skill_krixia_f2_a3", "A3", "normal", "self"),
-    ("skill_krixia_f2_a2", "A2", "normal", "aoe"),
-    ("skill_krixia_f2_a1", "A1", "normal", "single"),
-
-    # Harvest Jack
-    ("skill_harvest_jack_a2", "A2", "normal", "aoe"),
-    ("skill_harvest_jack_a3", "A3", "normal", "aoe"),
-    ("skill_harvest_jack_a1", "A1", "normal", "single"),
-
-    # Joan - form 1 used; form 2 kept only so recognition remains safe if present.
-    ("skill_joan_f1_a3", "A3", "dead_ally", "ally_dead"),
-    ("skill_joan_f1_a2", "A2", "normal", "self"),
-    ("skill_joan_f1_a1", "A1", "normal", "single"),
-    ("skill_joan_f1_a4", "A4", "normal", "transform"),
-    ("skill_joan_f2_a3", "A3", "normal", "single"),
-    ("skill_joan_f2_a2", "A2", "normal", "aoe"),
-    ("skill_joan_f2_a1", "A1", "normal", "aoe"),
-    ("skill_joan_f2_a4", "A4", "normal", "transform"),
-
-    # Yumeko - A2 exists for recognition but is excluded from priority.
-    ("skill_yumeko_a3", "A3", "normal", "self"),
-    ("skill_yumeko_a2", "A2", "normal", "single"),
-    ("skill_yumeko_a1", "A1", "normal", "single"),
-
-    # Cruetraxa
-    ("skill_cruetraxa_a2", "A2", "normal", "single"),
-    ("skill_cruetraxa_a1", "A1", "normal", "single"),
-
-    # Gliseah
-    ("skill_gliseah_a3", "A3", "normal", "self"),
-    ("skill_gliseah_a2", "A2", "normal", "aoe"),
-    ("skill_gliseah_a1", "A1", "normal", "single"),
-
-    # Nekhret - A3 selects the living ally with the lowest visible HP.
-    ("skill_nekhret_a2", "A2", "normal", "single"),
-    ("skill_nekhret_a3", "A3", "lowest_hp", "ally_living"),
-    ("skill_nekhret_a1", "A1", "normal", "single"),
-
-    # Embrys
-    ("skill_embrys_f1_a4", "A4", "normal", "transform"),
-    ("skill_embrys_f1_a3", "A3", "normal", "aoe"),
-    ("skill_embrys_f1_a2", "A2", "normal", "aoe"),
-    ("skill_embrys_f1_a1", "A1", "normal", "aoe"),
-    ("skill_embrys_f2_a4", "A4", "normal", "transform"),
-    ("skill_embrys_f2_a2", "A2", "normal", "aoe"),
-    ("skill_embrys_f2_a3", "A3", "normal", "single"),
-    ("skill_embrys_f2_a1", "A1", "normal", "single"),
-
-    # Marius
-    ("skill_marius_a3", "A3", "normal", "self"),
-    ("skill_marius_a2", "A2", "normal", "aoe"),
-    ("skill_marius_a1", "A1", "normal", "aoe"),
 ]
 
-# -------------------------
 # Vision ROIs
-# -------------------------
-# Wszystkie ROI są w układzie referencyjnym clienta RAID 1020x793.
 REFERENCE_SIZE = (1020, 793)
-
-# Rozmiar client-area, przy którym były kalibrowane template'y/skille.
-# VisionEngine skaluje PNG automatycznie, gdy użytkownik zmieni rozmiar okna.
 TEMPLATE_REFERENCE_SIZE = (1024, 769)
 
 ROI_TOP_CENTER = (330, 20, 700, 145)
@@ -506,23 +347,13 @@ ROI_CONFIRM = (735, 600, 1020, 793)
 ROI_ENEMY_TEAM = (610, 150, 1020, 570)
 ROI_OWN_TEAM = (0, 150, 430, 570)
 ROI_CHAMPION_ROSTER = (65, 555, 790, 793)
-
-# Cały pasek umiejętności w walce.
-# Celowo obejmuje również prawą stronę z pasywką P.
-# Pasywka nie jest klikana, bo nie ma jej w SKILL_PLAN.
 ROI_SKILL_BAR = (390, 590, 1020, 793)
-
-# Friendly combat slots, referencja 1020x793.
-# Służą TYLKO do wykrywania martwego sojusznika dla revive.
-# Punkt = miejsce kliknięcia w postać/corpse.
 ALLY_SLOT_POINTS = {
     1: (145, 455),
     2: (300, 505),
     3: (560, 535),
     4: (815, 505),
 }
-
-# Małe regiony nad slotami, gdzie przy żywej postaci widać zielony pasek HP.
 ALLY_HP_REGIONS = {
     1: (92, 338, 185, 390),
     2: (250, 375, 345, 430),
@@ -530,9 +361,6 @@ ALLY_HP_REGIONS = {
     4: (765, 390, 865, 445),
 }
 
-
-# Dodatkowe ROI: wcześniejsza wersja szukała tych wzorców po całym
-# ekranie 1024x769, co na filmie było jednym z głównych kosztów CPU.
 ROI_CENTER_STATUS = (250, 250, 800, 650)
 ROI_RESULT_BOTTOM = (250, 420, 800, 793)
 ROI_REFILL_MODAL = (220, 150, 820, 690)
@@ -593,7 +421,6 @@ def template_roi_for(template_path):
     }:
         return ROI_REFILL_CONFIRM
 
-    # Champion templates w fazie Pick znajdują się w dolnym rosterze.
     champion_names = {f"{x.lower()}.png" for x in MY_CHAMPIONS}
     if name in champion_names:
         return ROI_CHAMPION_ROSTER

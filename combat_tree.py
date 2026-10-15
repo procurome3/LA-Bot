@@ -24,6 +24,7 @@ class SkillTreeResult:
     state: str          # selected | wait | none
     reason: str
     priority: Tuple[str, ...]
+    unknown_reasons: Optional[Tuple[str, ...]] = None
 
 
 class CombatDecisionTree:
@@ -49,9 +50,20 @@ class CombatDecisionTree:
         declared_skill_ids: Iterable[str],
         dead_ally_available: bool,
         min_score: float,
+        prefer_fallback: bool = False,
+        **kwargs,
     ) -> SkillTreeResult:
+        """Decide which skill to use from a priority list.
+
+        The main difference from the older logic is that unknown/uncertain states
+        are accumulated instead of terminating the decision tree on the first
+        ambiguous signal. This allows lower-priority skills to still be evaluated
+        while leaving the outer engine enough information to start a controlled
+        timeout/fallback loop.
+        """
         priority = self.priority_for(family)
         declared = set(declared_skill_ids)
+        unknown_reasons: list[str] = []
 
         for skill_id in priority:
             if skill_id not in declared:
@@ -59,22 +71,18 @@ class CombatDecisionTree:
 
             item = skills.get(skill_id)
             if item is None:
-                return SkillTreeResult(
-                    None, "wait", f"{skill_id}-not-recognised", priority
-                )
+                unknown_reasons.append(f"{skill_id}-not-recognised")
+                continue
 
             eligibility = item.get("eligibility", "eligible")
             if eligibility == "ineligible":
                 continue
             if eligibility != "eligible":
-                return SkillTreeResult(
-                    None,
-                    "wait",
-                    item.get("eligibility_reason") or f"{skill_id}-eligibility-unknown",
-                    priority,
+                unknown_reasons.append(
+                    item.get("eligibility_reason") or f"{skill_id}-eligibility-unknown"
                 )
+                continue
 
-            # A single-target revive branch cannot run without a confirmed corpse.
             if item.get("attack_type") == "ally_dead" and not dead_ally_available:
                 continue
 
@@ -82,20 +90,51 @@ class CombatDecisionTree:
             if availability == "unavailable":
                 continue
             if availability != "available":
-                return SkillTreeResult(
-                    None, "wait", f"{skill_id}-availability-unknown", priority
-                )
+                unknown_reasons.append(f"{skill_id}-availability-unknown")
+                continue
 
-            if float(item.get("score", 0.0)) < float(min_score):
-                return SkillTreeResult(
-                    None, "wait", f"{skill_id}-match-uncertain", priority
-                )
+            score = float(item.get("score", 0.0))
+            if score < float(min_score):
+                unknown_reasons.append(f"{skill_id}-match-uncertain")
+                continue
 
             return SkillTreeResult(
                 item,
                 "selected",
                 item.get("eligibility_reason") or f"priority-{skill_id}-ready",
                 priority,
+                tuple(unknown_reasons) if unknown_reasons else None,
+            )
+
+        if prefer_fallback:
+            for skill_id in reversed(priority):
+                if skill_id not in declared:
+                    continue
+                item = skills.get(skill_id)
+                if not item:
+                    continue
+                if item.get("eligibility", "eligible") != "eligible":
+                    continue
+                if item.get("availability", "unknown") == "unavailable":
+                    continue
+                score = float(item.get("score", 0.0))
+                if score < float(min_score):
+                    continue
+                return SkillTreeResult(
+                    item,
+                    "selected",
+                    f"fallback-{item.get('skill_name', skill_id)}",
+                    priority,
+                    tuple(unknown_reasons) if unknown_reasons else None,
+                )
+
+        if unknown_reasons:
+            return SkillTreeResult(
+                None,
+                "wait",
+                ";".join(unknown_reasons),
+                priority,
+                tuple(unknown_reasons),
             )
 
         return SkillTreeResult(
@@ -103,4 +142,5 @@ class CombatDecisionTree:
             "none",
             "all-priority-skills-unavailable-or-ineligible",
             priority,
+            tuple(unknown_reasons) if unknown_reasons else None,
         )
