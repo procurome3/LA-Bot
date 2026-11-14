@@ -13,6 +13,7 @@
   ],
   "ban_priority": [
     "solonar",
+    "orynyx",
     "sabrael",
     "predator",
     "shu_zhen"
@@ -47,6 +48,9 @@
     ],
     "odin": [
       "cruetraxa"
+    ],
+    "orynyx": [
+      "gliseah"
     ],
     "telena": [
       "gliseah"
