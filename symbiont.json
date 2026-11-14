@@ -29,18 +29,21 @@
   "counter_pick": {
     "fabian": [
       "gliseah",
-      "predator"
+      "predator",
+      "orynyx"
     ],
     "krixia": [
       "gliseah",
-      "predator"
+      "predator",
+      "orynyx"
     ],
     "komidus": [
       "siphi"
     ],
     "tekteon": [
       "gliseah",
-      "vestele"
+      "vestele",
+      "orynyx"
     ],
     "marius": [
       "fabian",
@@ -54,6 +57,9 @@
     ],
     "telena": [
       "gliseah"
+    ],
+    "sabrael": [
+      "orynyx"
     ]
   },
   "counter_pick_rules": [],
