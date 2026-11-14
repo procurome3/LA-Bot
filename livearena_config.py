@@ -172,9 +172,10 @@ SKILL_PRIORITY_BY_FAMILY = {
     "cruetraxa": ["A2", "A1"],
     "gliseah": ["A3", "A2", "A1"],
     "nekhret": ["A2", "A3", "A1"],
-    "embrys_f1": ["A4", "A1"],                # transform immediately
-    "embrys_f2": ["A2", "A3", "A1"],          # A1 fallback; no return transform
+    "embrys_f1": ["A4", "A1"],
+    "embrys_f2": ["A2", "A3", "A1"],
     "marius": ["A3", "A2", "A1"],
+    "orynyx": ["A3", "A2", "A1"],
 }
 
 # Conditions are evaluated only for the currently recognised champion/skill.
@@ -377,6 +378,11 @@ SKILL_PLAN = [
     ("skill_pelops_a3", "A3", "normal", "self"),
     ("skill_pelops_a2", "A2", "normal", "single"),
     ("skill_pelops_a1", "A1", "normal", "single"),
+
+    # Orynyx Mindcrawler
+    ("skill_orynyx_a3", "A3", "normal", "aoe"),
+    ("skill_orynyx_a2", "A2", "normal", "aoe"),
+    ("skill_orynyx_a1", "A1", "normal", "single"),
 
     # Starsage Galathir - both forms known, transform disabled by priority.
     ("skill_galathir_f1_a3", "A3", "normal", "self"),
@@ -599,3 +605,4 @@ def template_roi_for(template_path):
         return ROI_CHAMPION_ROSTER
 
     return None
+
