@@ -29,12 +29,10 @@
   "counter_pick": {
     "fabian": [
       "gliseah",
-      "predator",
       "orynyx"
     ],
     "krixia": [
       "gliseah",
-      "predator",
       "orynyx"
     ],
     "komidus": [
@@ -42,12 +40,10 @@
     ],
     "tekteon": [
       "gliseah",
-      "vestele",
       "orynyx"
     ],
     "marius": [
-      "fabian",
-      "predator"
+      "fabian"
     ],
     "odin": [
       "cruetraxa"
