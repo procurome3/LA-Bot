@@ -165,6 +165,7 @@ class DraftProfile:
     counter_pick: Dict[str, List[str]] = field(default_factory=dict)
     counter_pick_rules: List[dict] = field(default_factory=list)
     ban_rules: List[dict] = field(default_factory=list)
+    pick_conflicts: List[Tuple[str, str]] = field(default_factory=list)
     opponent_templates: Dict[str, str] = field(default_factory=dict)
     pick_templates: Dict[str, str] = field(default_factory=dict)
     ban_templates: Dict[str, str] = field(default_factory=dict)
@@ -202,6 +203,19 @@ class DraftProfile:
             if isinstance(rule, Mapping)
         ]
 
+        conflicts: List[Tuple[str, str]] = []
+        raw_conflicts = data.get("pick_conflicts", []) or []
+        if isinstance(raw_conflicts, (list, tuple)):
+            for pair in raw_conflicts:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                first, second = normalize_champion(pair[0]), normalize_champion(pair[1])
+                if first and second and first != second:
+                    conflict = (first, second)
+                    reverse = (second, first)
+                    if conflict not in conflicts and reverse not in conflicts:
+                        conflicts.append(conflict)
+
         def norm_map(value: object) -> Dict[str, str]:
             result: Dict[str, str] = {}
             if not isinstance(value, Mapping):
@@ -220,6 +234,7 @@ class DraftProfile:
             counter_pick=cp,
             counter_pick_rules=cp_rules,
             ban_rules=ban_rules,
+            pick_conflicts=conflicts,
             opponent_templates=norm_map(data.get("opponent_templates", {})),
             pick_templates=norm_map(data.get("pick_templates", {})),
             ban_templates=norm_map(data.get("ban_templates", {})),
@@ -242,13 +257,7 @@ class DraftProfile:
         return _unique(order)
 
     def pick_order(self, enemy_champions: Iterable[str], own_picks: Iterable[str]) -> List[str]:
-        """
-        Return the ordered pick candidates, taking into account:
-          - counter picks (highest precedence),
-          - user's pick_priority,
-          - special rule: if selecting the 5th slot (own_picks has 4 items)
-            and Tekteon was NOT picked before, prefer Tekteon for this pick.
-        """
+        """Return ordered candidates while honoring counters and own-pick conflicts."""
         own_list = _unique(own_picks)
         own_set = set(own_list)
 
@@ -261,7 +270,14 @@ class DraftProfile:
             order = [o for o in order if normalize_champion(o) != tekteon_key]
             order.insert(0, tekteon_key)
 
-        return [x for x in _unique(order) if x not in own_set]
+        blocked: Set[str] = set()
+        for first, second in self.pick_conflicts:
+            if first in own_set:
+                blocked.add(second)
+            if second in own_set:
+                blocked.add(first)
+
+        return [x for x in _unique(order) if x not in own_set and x not in blocked]
 
     def ban_order(self, enemy_champions: Iterable[str]) -> List[str]:
         enemy_set = {normalize_champion(x) for x in enemy_champions if normalize_champion(x)}
@@ -302,8 +318,7 @@ class DraftProfile:
         return tuple(dict.fromkeys(candidates))
 
     def enemy_template_stems(self, champion: object) -> Tuple[str, ...]:
-        key = normalize_champion(champion)
-        return enemy_template_names(key, self.opponent_templates.get(key))
+        return enemy_template_names(champion, self.opponent_templates.get(normalize_champion(champion)))
 
     def preload_template_stems(self) -> List[str]:
         names: List[str] = []
@@ -447,3 +462,4 @@ def profile_name_from_argv(
     if env_value:
         return env_value
     return default_name
+
